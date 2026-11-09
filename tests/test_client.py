@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -95,6 +96,23 @@ class ClientTests(unittest.TestCase):
         with self.assertRaisesRegex(KISError,"not configured"):
             KISClient(Settings("real","","","12345678","01","ISA"),transport=t).domestic_balance()
         self.assertFalse(t.calls)
+
+    def test_token_disk_cache_reuses_token_and_is_private(self):
+        with tempfile.TemporaryDirectory() as root:
+            with patch("kis_mcp.client.Path.home", return_value=Path(root)):
+                first=FakeTransport()
+                c1=KISClient(SETTINGS, transport=first)
+                c1._allow_disk_cache=True
+                self.assertEqual(c1._token(), "secret-token")
+                self.assertEqual(len(first.calls), 1)
+                cache=list((Path(root)/".local/state/kis-mcp").glob("token-*.json"))
+                self.assertEqual(len(cache), 1)
+                self.assertEqual(cache[0].stat().st_mode & 0o777, 0o600)
+                second=FakeTransport()
+                c2=KISClient(SETTINGS, transport=second)
+                c2._allow_disk_cache=True
+                self.assertEqual(c2._token(), "secret-token")
+                self.assertEqual(len(second.calls), 0)
 
     def test_service_failure_and_no_isa_claim(self):
         status,balance,export=make_service(Settings("real","","","","","ISA"))
