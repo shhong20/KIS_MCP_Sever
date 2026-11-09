@@ -12,7 +12,8 @@ from .config import Settings
 
 TOKEN_PATH = "/oauth2/tokenP"
 DOMESTIC_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance"
-ALLOWED_DATA_PATHS = frozenset({DOMESTIC_BALANCE_PATH})
+BUYABLE_PATH = "/uapi/domestic-stock/v1/trading/inquire-psbl-order"
+ALLOWED_DATA_PATHS = frozenset({DOMESTIC_BALANCE_PATH, BUYABLE_PATH})
 
 class KISError(RuntimeError):
     """Errors must not echo API credentials, account numbers or response bodies."""
