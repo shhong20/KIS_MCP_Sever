@@ -2,6 +2,10 @@
 from __future__ import annotations
 import json
 import time
+import os
+from hashlib import sha256
+from pathlib import Path
+from uuid import uuid4
 from urllib import parse, request, error
 from typing import Callable
 from .config import Settings
@@ -19,6 +23,7 @@ class KISClient:
         self.transport = transport or self._urlopen_transport
         self._access_token = ""
         self._token_until = 0.0
+        self._allow_disk_cache = transport is None
 
     @staticmethod
     def _urlopen_transport(url: str, method: str, headers: dict, payload: bytes | None):
@@ -51,12 +56,62 @@ class KISClient:
             return decoded, {str(k).lower():str(v) for k,v in response_headers.items()}
         except KISError:
             raise
+        except error.HTTPError as exc:
+            raise KISError(f"KIS HTTP {exc.code} (response content withheld)") from None
         except (error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
             raise KISError("KIS transport or response error") from None
+
+    def _cache_file(self) -> Path:
+        identity = sha256((self.config.environment + ":" + self.config.app_key
+                           + ":" + self.config.app_secret).encode()).hexdigest()[:24]
+        directory = Path.home() / ".local" / "state" / "kis-mcp"
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if directory.is_symlink() or not directory.is_dir() or (directory.stat().st_mode & 0o077):
+            raise KISError("Token cache directory permissions invalid")
+        return directory / ("token-" + identity + ".json")
+
+    def _load_cached_token(self) -> str | None:
+        path = self._cache_file()
+        if not path.exists():
+            return None
+        if path.is_symlink() or (path.stat().st_mode & 0o077):
+            raise KISError("Token cache permissions invalid")
+        try:
+            obj = json.loads(path.read_text())
+            token = obj.get("token")
+            until = float(obj.get("expires_at", 0))
+            if isinstance(token, str) and token and until > time.time() + 60:
+                self._access_token = token
+                self._token_until = time.monotonic() + (until - time.time())
+                return token
+        except (ValueError, OSError, TypeError, AttributeError):
+            raise KISError("Token cache invalid") from None
+        return None
+
+    def _save_cached_token(self, token: str, expires_at: float) -> None:
+        path = self._cache_file()
+        tmp = path.with_name("." + path.name + "." + uuid4().hex)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        fd = os.open(tmp, flags, 0o600)
+        try:
+            with os.fdopen(fd, "w") as stream:
+                json.dump({"token": token, "expires_at": expires_at}, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(tmp, path)
+        finally:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def _token(self) -> str:
         if self._access_token and time.monotonic() < self._token_until:
             return self._access_token
+        if self._allow_disk_cache:
+            cached = self._load_cached_token()
+            if cached:
+                return cached
         obj, _ = self._request(
             TOKEN_PATH,
             method="POST",
@@ -73,7 +128,10 @@ class KISClient:
         except (ValueError, TypeError):
             expiry = 3600
         self._access_token = token
-        self._token_until = time.monotonic() + max(0, min(expiry, 86400) - 120)
+        ttl = max(0, min(expiry, 86400) - 120)
+        self._token_until = time.monotonic() + ttl
+        if self._allow_disk_cache and ttl > 0:
+            self._save_cached_token(token, time.time() + ttl)
         return token
 
     def domestic_balance(self) -> dict:
