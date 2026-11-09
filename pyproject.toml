@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kis-personal-mcp"
+version = "0.1.0"
+description = "Read-only Korea Investment & Securities MCP server for personal portfolio analysis"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["mcp>=1.0,<3.0"]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
