@@ -17,7 +17,10 @@ REGION_FOR_DIRECT = {"KR":"Korea","US":"United States"}
 # User-supplied look-through cannot be called broker-verified.
 
 def combined_exposure(nh:dict, kis:dict, *, audit_status:str="UNVERIFIED",
-                      lookthrough:dict|None=None, monthly_investment_krw:int=0)->dict:
+                      lookthrough:dict|None=None, monthly_investment_krw:int=0,
+                      mapping_origin:str="caller_supplied")->dict:
+    if mapping_origin not in ("caller_supplied", "issuer_cached_partial"):
+        raise ReconciliationError("Invalid ETF mapping provenance")
     combined=reconcile_portfolios(nh,kis,nh_audit_status=audit_status)
     total=combined["combined_securities_krw"]
     if type(monthly_investment_krw) is not int or not 0<=monthly_investment_krw<=100_000_000:
@@ -102,7 +105,8 @@ def combined_exposure(nh:dict, kis:dict, *, audit_status:str="UNVERIFIED",
         mapped_breakdown.append({"symbol":p["symbol"],"value_krw":value,
                                  "mapped_krw":value*info["mapped_bps"]//10000,
                                  "unknown_krw":value-value*info["mapped_bps"]//10000,
-                                 "status":"CALLER_SUPPLIED_NOT_INDEPENDENTLY_VERIFIED",
+                                 "status":("OFFICIAL_ISSUER_CACHE_PARTIAL_NOT_ATTESTED" if mapping_origin=="issuer_cached_partial"
+                                           else "CALLER_SUPPLIED_NOT_INDEPENDENTLY_VERIFIED"),
                                  "as_of":info["as_of"],"source_url":info["source_url"]})
     unknown_etf=max(0,etf_value-classified_etf_value)
     # The lower bound counts direct named semiconductors plus the explicitly
@@ -123,7 +127,9 @@ def combined_exposure(nh:dict, kis:dict, *, audit_status:str="UNVERIFIED",
                       key=lambda x:(-x["shortfall_krw"],-x["weight_pct"],x["symbol"]))
     return {
         "ok":True,"mode":"CROSS_BROKER_READ_ONLY",
-        "provenance":"NH caller-supplied snapshot; KIS live read-only; optional ETF mapping caller-supplied",
+        "provenance":("NH caller-supplied snapshot; KIS live read-only; ETF mapping official issuer partial cache"
+                       if mapping_origin=="issuer_cached_partial" else
+                       "NH caller-supplied snapshot; KIS live read-only; optional ETF mapping caller-supplied"),
         "nh_accounting_status":audit_status,
         "combined_securities_krw":total,
         "verified_combined_net_assets_krw":None,
