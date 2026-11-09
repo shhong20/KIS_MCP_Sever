@@ -31,6 +31,7 @@ def main() -> None:
         raise RuntimeError("Install project dependencies: pip install -e .") from None
 
     settings = Settings.from_env()
+    client = KISClient(settings)
     status, balance, export = make_service(settings)
     app = FastMCP("kis-readonly")
     app.tool(name="kis_connection_status", description="KIS API configuration status, no secrets")(status)
