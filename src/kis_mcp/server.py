@@ -3,6 +3,8 @@ from __future__ import annotations
 from .config import Settings
 from .client import KISClient, KISError
 from .normalize import normalize_balance
+from .reconcile import reconcile_portfolios, ReconciliationError
+import json
 
 def make_service(settings: Settings):
     client = KISClient(settings)
@@ -33,4 +35,18 @@ def main() -> None:
     app.tool(name="kis_connection_status", description="KIS API configuration status, no secrets")(status)
     app.tool(name="kis_domestic_balance", description="Read-only domestic holdings and cash summary; ISA eligibility not guaranteed")(balance)
     app.tool(name="kis_portfolio_export", description="Normalized redacted holdings for cross-broker analysis")(export)
+    def compare_namuh_snapshot(namuh_overview_json: str, namuh_audit_status: str = "UNVERIFIED") -> dict:
+        """Compare caller-supplied NH overview with live KIS; never treat NH input as verified."""
+        if not isinstance(namuh_overview_json, str) or len(namuh_overview_json) > 150_000:
+            return {"ok": False, "reason": "Invalid NH payload size"}
+        try:
+            nh = json.loads(namuh_overview_json)
+            isa = export()
+            if not isa.get("ok"):
+                return {"ok": False, "reason": "KIS live balance unavailable"}
+            result = reconcile_portfolios(nh, isa, nh_audit_status=str(namuh_audit_status)[:60])
+            return {"ok": True, **result}
+        except (json.JSONDecodeError, ReconciliationError, TypeError, ValueError):
+            return {"ok": False, "reason": "NH snapshot invalid or cannot reconcile"}
+    app.tool(name="kis_compare_namuh_snapshot", description="Compare caller-provided NH securities with live ISA; never estimates full NAV or validates NH origin")(compare_namuh_snapshot)
     app.run(transport="stdio")
