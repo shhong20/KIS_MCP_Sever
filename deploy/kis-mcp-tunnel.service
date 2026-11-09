@@ -1,0 +1,21 @@
+[Unit]
+Description=KIS MCP dedicated read-only ChatGPT tunnel
+Documentation=https://github.com/shhong20/KIS_MCP_Sever
+After=network.target
+StartLimitIntervalSec=0
+ConditionPathExists=/home/hong/.config/tunnel-client/kis-portfolio.yaml
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hong/KIS_MCP_Sever
+EnvironmentFile=/home/hong/.config/kis-mcp/tunnel-runtime.env
+ExecStart=/home/hong/.local/bin/tunnel-client run --profile kis-portfolio
+Restart=on-failure
+RestartSec=12
+TimeoutStopSec=15
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
