@@ -5,6 +5,7 @@ from .client import KISClient, KISError
 from .normalize import normalize_balance
 from .reconcile import reconcile_portfolios, ReconciliationError
 from .buyability import query_buyable
+from .etf_allocation import allocate_etf_sleeve
 import json
 
 def make_service(settings: Settings):
@@ -57,4 +58,13 @@ def main() -> None:
         except KISError as exc:
             return {"ok": False, "reason": str(exc)}
     app.tool(name="kis_domestic_buying_power", description="Read-only, no-margin cash buying power by symbol and limit price; NEVER places an order")(buyability)
+    def plan_etf_contribution(quotes_json: str, budget_krw: int, no_margin_ceiling_krw: int | None = None) -> dict:
+        if not isinstance(quotes_json,str) or len(quotes_json)>10000:
+            return {"ok":False,"reason":"Invalid quote payload"}
+        try:
+            quotes=json.loads(quotes_json)
+        except (ValueError,TypeError):
+            return {"ok":False,"reason":"Quotes must be JSON object"}
+        return allocate_etf_sleeve(export(),quotes,budget_krw,cash_ceiling_krw=no_margin_ceiling_krw)
+    app.tool(name="kis_plan_etf_contribution",description="READ-ONLY ETF target-weight contribution simulation, caller-supplied quotes, no orders")(plan_etf_contribution)
     app.run(transport="stdio")
