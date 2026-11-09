@@ -38,3 +38,20 @@ class BuyabilityTest(unittest.TestCase):
   with self.assertRaises(KISError):c._request('/uapi/domestic-stock/v1/trading/order-cash',method='GET',headers={})
   self.assertFalse(t.calls)
 if __name__=='__main__':unittest.main()
+
+class MCPRuntimeContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_buyability_tool_executes_without_unbound_client(self):
+        from mcp import ClientSession,StdioServerParameters
+        from mcp.client.stdio import stdio_client
+        import json
+        server=StdioServerParameters(command=sys.executable,args=['-m','kis_mcp'],cwd=str(Path(__file__).resolve().parents[1]))
+        async with stdio_client(server) as (reader,writer):
+            async with ClientSession(reader,writer) as session:
+                await session.initialize()
+                names=[tool.name for tool in (await session.list_tools()).tools]
+                self.assertIn('kis_domestic_buying_power', names)
+                output=await session.call_tool('kis_domestic_buying_power',{'symbol':'bad','limit_price_krw':22600})
+                result=json.loads(output.content[0].text)
+                self.assertFalse(result['ok'])
+                self.assertIn('six decimal digits',result['reason'])
+                self.assertNotIn('client',result['reason'])
