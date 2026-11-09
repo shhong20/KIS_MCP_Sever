@@ -1,0 +1,18 @@
+# Copy to ~/.config/tunnel-client/kis-portfolio.yaml ONLY after creating a
+# dedicated KIS tunnel on OpenAI control plane. Never reuse the Namuh tunnel ID.
+config_version: 1
+control_plane:
+  base_url: "https://api.openai.com"
+  tunnel_id: "REPLACE_WITH_DEDICATED_KIS_TUNNEL_ID"
+  api_key: "env:CONTROL_PLANE_API_KEY"
+health:
+  listen_addr: "127.0.0.1:0"
+admin_ui:
+  open_browser: false
+log:
+  level: info
+  format: json
+mcp:
+  commands:
+    - channel: main
+      command: "/home/hong/KIS_MCP_Sever/.venv/bin/python -m kis_mcp"
