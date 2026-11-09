@@ -24,7 +24,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           source=Path("src/kis_mcp/client.py").read_text()
-          assert 'ALLOWED_DATA_PATHS = frozenset({DOMESTIC_BALANCE_PATH})' in source
+          assert 'ALLOWED_DATA_PATHS = frozenset({DOMESTIC_BALANCE_PATH, BUYABLE_PATH})' in source
           assert 'method != "GET"' in source
           assert 'order-cash' not in source
           print("Read-only API allowlist PASS")

@@ -4,6 +4,7 @@ from .config import Settings
 from .client import KISClient, KISError
 from .normalize import normalize_balance
 from .reconcile import reconcile_portfolios, ReconciliationError
+from .buyability import query_buyable
 import json
 
 def make_service(settings: Settings):
@@ -49,4 +50,10 @@ def main() -> None:
         except (json.JSONDecodeError, ReconciliationError, TypeError, ValueError):
             return {"ok": False, "reason": "NH snapshot invalid or cannot reconcile"}
     app.tool(name="kis_compare_namuh_snapshot", description="Compare caller-provided NH securities with live ISA; never estimates full NAV or validates NH origin")(compare_namuh_snapshot)
+    def buyability(symbol: str, limit_price_krw: int) -> dict:
+        try:
+            return query_buyable(client, symbol, limit_price_krw)
+        except KISError as exc:
+            return {"ok": False, "reason": str(exc)}
+    app.tool(name="kis_domestic_buying_power", description="Read-only, no-margin cash buying power by symbol and limit price; NEVER places an order")(buyability)
     app.run(transport="stdio")
