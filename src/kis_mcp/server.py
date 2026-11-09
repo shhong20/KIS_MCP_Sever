@@ -6,6 +6,7 @@ from .normalize import normalize_balance
 from .reconcile import reconcile_portfolios, ReconciliationError
 from .buyability import query_buyable
 from .etf_allocation import allocate_etf_sleeve
+from .cross_broker_allocation import combined_exposure
 import json
 
 def make_service(settings: Settings):
@@ -67,4 +68,19 @@ def main() -> None:
             return {"ok":False,"reason":"Quotes must be JSON object"}
         return allocate_etf_sleeve(export(),quotes,budget_krw,cash_ceiling_krw=no_margin_ceiling_krw)
     app.tool(name="kis_plan_etf_contribution",description="READ-ONLY ETF target-weight contribution simulation, caller-supplied quotes, no orders")(plan_etf_contribution)
+    def cross_broker_allocation(namuh_overview_json: str, monthly_contribution_krw: int = 150000, etf_lookthrough_json: str = "", namuh_audit_status: str = "UNVERIFIED") -> dict:
+        if not isinstance(namuh_overview_json,str) or len(namuh_overview_json)>150000:
+            return {"ok":False,"reason":"Invalid NH payload size"}
+        if not isinstance(etf_lookthrough_json,str) or len(etf_lookthrough_json)>300000:
+            return {"ok":False,"reason":"Invalid ETF mapping size"}
+        try:
+            nh=json.loads(namuh_overview_json)
+            mapping=json.loads(etf_lookthrough_json) if etf_lookthrough_json else None
+            isa=export()
+            if not isa.get("ok"):
+                return {"ok":False,"reason":"KIS balance unavailable"}
+            return combined_exposure(nh,isa,audit_status=str(namuh_audit_status)[:60],lookthrough=mapping,monthly_investment_krw=monthly_contribution_krw)
+        except (json.JSONDecodeError, ReconciliationError, TypeError, ValueError):
+            return {"ok":False,"reason":"Invalid snapshots or ETF mappings"}
+    app.tool(name="kis_cross_broker_allocation", description="READ-ONLY NH+KIS securities exposures and ETF target shortfalls; caller supplied NH snapshot and optional ETF holdings; no orders")(cross_broker_allocation)
     app.run(transport="stdio")
