@@ -23,7 +23,7 @@ def load_local_env() -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        if key.strip() in {"KIS_ENV","KIS_APP_KEY","KIS_APP_SECRET","KIS_CANO","KIS_ACNT_PRDT_CD","KIS_ACCOUNT_LABEL"}:
+        if key.strip() in {"KIS_ENV","KIS_APP_KEY","KIS_APP_SECRET","KIS_CANO","KIS_ACNT_PRDT_CD","KIS_ACCOUNT_LABEL","KIS_ISA_USER_CONFIRMED"}:
             os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ class Settings:
     cano: str
     product_code: str
     account_label: str
+    isa_user_confirmed: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -54,6 +55,7 @@ class Settings:
             cano,
             product_code,
             os.environ.get("KIS_ACCOUNT_LABEL", "unverified").strip()[:32],
+            os.environ.get("KIS_ISA_USER_CONFIRMED", "false").strip().lower() == "true",
         )
 
     @property
@@ -72,4 +74,6 @@ class Settings:
             "account_configured": bool(self.cano and self.product_code),
             "account_label_user_declared": self.account_label,
             "isa_api_eligibility_verified": False,
+            "isa_user_confirmed": self.isa_user_confirmed,
+            "account_type_source": "user_confirmed" if self.isa_user_confirmed else "unverified",
         }

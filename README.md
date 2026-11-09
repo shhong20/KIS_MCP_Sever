@@ -69,3 +69,7 @@ ISA 전용 메타데이터(납입한도, ISA 만기, 계좌유형)의 존재 여
 - [한국투자증권 공식 API 포털](https://apiportal.koreainvestment.com/docs)
 - [한국투자증권 공식 샘플 코드](https://github.com/koreainvestment/open-trading-api)
 
+
+## ISA 계좌 유형 및 포트폴리오 합산
+
+계좌 소유자가 ISA 계좌임을 확인했을 때만 로컬 `.env`에 `KIS_ISA_USER_CONFIRMED=true`를 설정합니다. 서버 응답에는 `account_type_source=user_confirmed`로 표시하며 API 자체의 ISA 인증을 주장하지 않습니다. `kis_portfolio_export`는 종목별 원화 평가액과 브로커 원화 예수금을 별도 필드로 제공합니다. 예수금은 주문가능금액으로 확정하지 않으며 총자산에 중복 합산하지 않습니다.

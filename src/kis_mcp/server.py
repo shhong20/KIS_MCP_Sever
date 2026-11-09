@@ -2,6 +2,7 @@
 from __future__ import annotations
 from .config import Settings
 from .client import KISClient, KISError
+from .normalize import normalize_balance
 
 def make_service(settings: Settings):
     client = KISClient(settings)
@@ -17,20 +18,7 @@ def make_service(settings: Settings):
         data = balance()
         if not data.get("complete"):
             return {"ok": False, "reason": data.get("reason", "Not verified")}
-        return {
-            "broker": "KIS",
-            "currency": "KRW",
-            "holdings": [
-                {"symbol": p.get("pdno"), "name": p.get("prdt_name"),
-                 "quantity": p.get("hldg_qty"), "value_krw": p.get("evlu_amt")}
-                for p in data["holdings"]
-            ],
-            "cash_krw_broker_reported": data["summary"].get("dnca_tot_amt"),
-            "cash_is_order_buyable": False,
-            "isa_eligibility_verified": False,
-            "complete": True,
-            "warning": "Do not sum unverified cash, securities and margin. Verify ISA account eligibility.",
-        }
+        return normalize_balance(data, settings)
     return status, balance, export
 
 def main() -> None:
