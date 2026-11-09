@@ -73,3 +73,9 @@ ISA 전용 메타데이터(납입한도, ISA 만기, 계좌유형)의 존재 여
 ## ISA 계좌 유형 및 포트폴리오 합산
 
 계좌 소유자가 ISA 계좌임을 확인했을 때만 로컬 `.env`에 `KIS_ISA_USER_CONFIRMED=true`를 설정합니다. 서버 응답에는 `account_type_source=user_confirmed`로 표시하며 API 자체의 ISA 인증을 주장하지 않습니다. `kis_portfolio_export`는 종목별 원화 평가액과 브로커 원화 예수금을 별도 필드로 제공합니다. 예수금은 주문가능금액으로 확정하지 않으며 총자산에 중복 합산하지 않습니다.
+
+## 나무증권 통합 종목조회 (2026-11)
+
+\`kis_compare_namuh_snapshot\`는 나무증권 플러그인의 `portfolio_overview` 응답 JSON을 **호출자가 제공하면**, 한국투자증권 ISA를 새로 조회하고 종목별 보유수량·평가액을 합산합니다. 동일 종목도 거래소/국가가 다르면 다른 종목으로 유지합니다. 나무증권 자료는 KIS 서버가 원본을 인증하지 않으므로 `nh_input_provenance=caller_supplied_not_authenticated`로 표시됩니다. `portfolio_net_asset_audit`의 결과가 검증되지 않은 경우 입력 `namuh_audit_status=UNRECONCILED_ACCOUNTING`으로 전달할 수 있습니다.
+
+**현금·예수금·증거금·미결제금·총자산 및 실현손익은 단순 합산하지 않습니다.** 결측치나 합계 불일치가 있으면 결과를 반환하지 않습니다. 완전한 통합 순자산·실제 투자수익률은 해당 증권사의 외부 입출금까지 검증되기 전까지 null입니다.
