@@ -79,3 +79,7 @@ ISA 전용 메타데이터(납입한도, ISA 만기, 계좌유형)의 존재 여
 \`kis_compare_namuh_snapshot\`는 나무증권 플러그인의 `portfolio_overview` 응답 JSON을 **호출자가 제공하면**, 한국투자증권 ISA를 새로 조회하고 종목별 보유수량·평가액을 합산합니다. 동일 종목도 거래소/국가가 다르면 다른 종목으로 유지합니다. 나무증권 자료는 KIS 서버가 원본을 인증하지 않으므로 `nh_input_provenance=caller_supplied_not_authenticated`로 표시됩니다. `portfolio_net_asset_audit`의 결과가 검증되지 않은 경우 입력 `namuh_audit_status=UNRECONCILED_ACCOUNTING`으로 전달할 수 있습니다.
 
 **현금·예수금·증거금·미결제금·총자산 및 실현손익은 단순 합산하지 않습니다.** 결측치나 합계 불일치가 있으면 결과를 반환하지 않습니다. 완전한 통합 순자산·실제 투자수익률은 해당 증권사의 외부 입출금까지 검증되기 전까지 null입니다.
+
+## ISA 주문가능금액 조회 (주문 실행 없음)
+
+`kis_domestic_buying_power(symbol, limit_price_krw)`는 KIS 공식 국내주식 `inquire-psbl-order`(GET, 실전 `TTTC8908R`)를 사용해 지정 종목·지정가 기준 미수 없는 매수가능금액과 수량을 확인합니다. `nrcvb_buy_amt`/`nrcvb_buy_qty`를 기준으로 하며 `max_buy_amt`는 증거금·신용을 포함할 가능성이 있어 권장 금액으로 사용하지 않습니다. 예수금 `dnca_tot_amt`와 주문가능금액은 다를 수 있습니다. 이 API는 주문 접수가 불가능하며, 계좌 인증 실패나 미지원 시 에러를 돌려줍니다. 상품의 종류·장중 시세·계좌 정책에 따라 결과가 달라집니다.
