@@ -7,6 +7,7 @@ from .reconcile import reconcile_portfolios, ReconciliationError
 from .buyability import query_buyable
 from .etf_allocation import allocate_etf_sleeve
 from .cross_broker_allocation import combined_exposure
+from .etf_official import read_fresh_official_cache
 import json
 
 def make_service(settings: Settings):
@@ -75,11 +76,12 @@ def main() -> None:
             return {"ok":False,"reason":"Invalid ETF mapping size"}
         try:
             nh=json.loads(namuh_overview_json)
-            mapping=json.loads(etf_lookthrough_json) if etf_lookthrough_json else None
+            mapping=json.loads(etf_lookthrough_json) if etf_lookthrough_json else read_fresh_official_cache()
+            origin="caller_supplied" if etf_lookthrough_json else "issuer_cached_partial" if mapping else "caller_supplied"
             isa=export()
             if not isa.get("ok"):
                 return {"ok":False,"reason":"KIS balance unavailable"}
-            return combined_exposure(nh,isa,audit_status=str(namuh_audit_status)[:60],lookthrough=mapping,monthly_investment_krw=monthly_contribution_krw)
+            return combined_exposure(nh,isa,audit_status=str(namuh_audit_status)[:60],lookthrough=mapping,monthly_investment_krw=monthly_contribution_krw,mapping_origin=origin)
         except (json.JSONDecodeError, ReconciliationError, TypeError, ValueError):
             return {"ok":False,"reason":"Invalid snapshots or ETF mappings"}
     app.tool(name="kis_cross_broker_allocation", description="READ-ONLY NH+KIS securities exposures and ETF target shortfalls; caller supplied NH snapshot and optional ETF holdings; no orders")(cross_broker_allocation)
