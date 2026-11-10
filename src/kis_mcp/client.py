@@ -46,7 +46,20 @@ class KISClient:
             url += "?" + parse.urlencode(params)
         data = json.dumps(body, separators=(",", ":")).encode() if body is not None else None
         try:
-            status, response_headers, raw = self.transport(url, method, headers, data)
+            try:
+                status, response_headers, raw = self.transport(url, method, headers, data)
+            except error.HTTPError as exc:
+                if exc.code != 401 or path == TOKEN_PATH:
+                    raise
+                status, response_headers, raw = 401, {}, b""
+            if status == 401 and path != TOKEN_PATH:
+                # One bounded retry. Do not repeat other errors or rotate on 429.
+                self._invalidate_token()
+                headers = {**headers, "authorization": "Bearer " + self._token()}
+                try:
+                    status, response_headers, raw = self.transport(url, method, headers, data)
+                except error.HTTPError as exc:
+                    raise KISError(f"KIS HTTP {exc.code} (response content withheld)") from None
             if status != 200:
                 raise KISError("KIS HTTP response was not successful")
             if len(raw) > 3_000_000:
@@ -105,6 +118,23 @@ class KISClient:
                 tmp.unlink(missing_ok=True)
             except OSError:
                 pass
+
+    def _invalidate_token(self) -> None:
+        """Drop only this client's cached token on explicit broker HTTP 401."""
+        self._access_token = ""
+        self._token_until = 0.0
+        if not self._allow_disk_cache:
+            return
+        path = self._cache_file()
+        if path.is_symlink():
+            raise KISError("Token cache symlink refused")
+        try:
+            if path.exists():
+                if path.stat().st_mode & 0o077:
+                    raise KISError("Token cache permissions invalid")
+                path.unlink()
+        except OSError:
+            raise KISError("Token cache invalidation failed") from None
 
     def _token(self) -> str:
         if self._access_token and time.monotonic() < self._token_until:
