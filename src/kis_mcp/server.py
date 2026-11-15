@@ -8,6 +8,7 @@ from .buyability import query_buyable
 from .etf_allocation import allocate_etf_sleeve
 from .cross_broker_allocation import combined_exposure
 from .etf_official import read_fresh_official_cache
+from .snapshots import capture_snapshot, snapshot_history
 import json
 
 def make_service(settings: Settings):
@@ -85,4 +86,18 @@ def main() -> None:
         except (json.JSONDecodeError, ReconciliationError, TypeError, ValueError):
             return {"ok":False,"reason":"Invalid snapshots or ETF mappings"}
     app.tool(name="kis_cross_broker_allocation", description="READ-ONLY NH+KIS securities exposures and ETF target shortfalls; caller supplied NH snapshot and optional ETF holdings; no orders")(cross_broker_allocation)
+    def daily_capture() -> dict:
+        """Store one validated ISA securities valuation per KST day, without orders."""
+        try:
+            return capture_snapshot(settings, export)
+        except (OSError, ValueError, TypeError, KeyError):
+            return {"ok": False, "reason": "KIS snapshot capture or storage validation failed"}
+    app.tool(name="kis_portfolio_capture_snapshot", description="Capture validated KIS securities and reported cash once per KST day in private immutable local file; NOT verified investment return; no trading")(daily_capture)
+    def daily_history(month: str = "") -> dict:
+        """Read locally captured valuations; missing days remain missing."""
+        try:
+            return snapshot_history(settings, month)
+        except (OSError, ValueError, TypeError, KeyError):
+            return {"ok": False, "reason": "KIS snapshot history validation failed"}
+    app.tool(name="kis_portfolio_history", description="Read KIS immutable daily valuation history; gaps and contributions marked; not portfolio return; no trading")(daily_history)
     app.run(transport="stdio")
