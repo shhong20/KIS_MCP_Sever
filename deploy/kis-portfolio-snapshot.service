@@ -1,0 +1,12 @@
+[Unit]
+Description=KIS ISA read-only daily securities snapshot
+After=network.target
+ConditionPathExists=/home/hong/KIS_MCP_Sever/.env
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hong/KIS_MCP_Sever
+ExecStart=/home/hong/KIS_MCP_Sever/.venv/bin/python -m kis_mcp.capture_daily
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

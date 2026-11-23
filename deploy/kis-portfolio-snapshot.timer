@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekday 20:35 KST KIS daily snapshot (after Namuh 20:30)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 20:35:00 Asia/Seoul
+Persistent=false
+AccuracySec=1min
+Unit=kis-portfolio-snapshot.service
+
+[Install]
+WantedBy=timers.target
