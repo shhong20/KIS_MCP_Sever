@@ -38,6 +38,11 @@ def normalize_balance(data: dict, settings: Settings) -> dict:
         "securities_krw_broker_reported": securities,
         "securities_krw_rows": subtotal,
         "broker_reported_cash_krw": cash,
+        "broker_reported_settlement_fields_krw": {
+            "nxdy_excc_amt": as_integer(summary.get("nxdy_excc_amt")),
+            "prvs_rcdl_excc_amt": as_integer(summary.get("prvs_rcdl_excc_amt")),
+        },
+        "broker_reported_settlement_fields_provenance": "KIS_balance_output2_raw_not_reconciled",
         "broker_reported_total_assets_krw": total,
         "positions_match_securities_summary": subtotal == securities,
         "sum_position_plus_cash_equals_broker_total": subtotal + cash == total,
