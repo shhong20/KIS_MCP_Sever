@@ -102,7 +102,7 @@ class DailyAttributionTests(unittest.TestCase):
         obj=json.loads(p.read_text())
         obj["securities_value_krw"]=999999
         p.write_text(json.dumps(obj))
-        with self.assertRaisesRegex(ValueError,"do not reconcile"):
+        with self.assertRaisesRegex(ValueError,"does not reconcile"):
             snapshot_history(self.settings,root=self.root)
 
 if __name__=="__main__":
