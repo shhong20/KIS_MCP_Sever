@@ -184,17 +184,50 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
             old_positions.keys() == new_positions.keys()
             and all(old_positions[k]["quantity"] == new_positions[k]["quantity"] for k in old_positions)
         )
-        contributions = []
-        if same_quantities:
-            contributions = sorted(
-                ({"symbol": symbol,
-                  "valuation_change_krw": pos["market_value_krw"] - old_positions[symbol]["market_value_krw"]}
-                 for symbol, pos in new_positions.items()),
-                key=lambda x: abs(x["valuation_change_krw"]), reverse=True,
-            )[:5]
+        stable_contributions = sorted(
+            ({"symbol": symbol,
+              "valuation_change_krw": pos["market_value_krw"] - old_positions[symbol]["market_value_krw"]}
+             for symbol, pos in new_positions.items()
+             if symbol in old_positions
+             and pos["quantity"] == old_positions[symbol]["quantity"]
+             and pos["quantity"] > 0),
+            key=lambda x: abs(x["valuation_change_krw"]), reverse=True,
+        ) if previous else []
+        changed_symbols = sorted(
+            symbol for symbol in old_positions.keys() | new_positions.keys()
+            if symbol not in old_positions or symbol not in new_positions
+            or old_positions[symbol]["quantity"] != new_positions[symbol]["quantity"]
+        ) if previous else []
+        contributions = stable_contributions[:5] if same_quantities else []
+        securities_sum = sum(p["market_value_krw"] for p in snapshot["positions"])
+        balance_consistent = securities_sum == value and (
+            snapshot["reported_cash_krw"] + value == snapshot["reported_total_assets_krw"]
+            and snapshot.get("reported_total_matches_cash_plus_securities") is True
+        )
+        previous_consistent = previous is None or (
+            sum(p["market_value_krw"] for p in previous["positions"]) == previous["securities_value_krw"]
+            and previous["reported_cash_krw"] + previous["securities_value_krw"]
+            == previous["reported_total_assets_krw"]
+            and previous.get("reported_total_matches_cash_plus_securities") is True
+        )
+        if not balance_consistent or not previous_consistent:
+            raise ValueError("Stored account valuation totals do not reconcile")
+        calendar_gap = (_day(snapshot["date"]) - _day(previous["date"])).days if previous else None
+        blockers = ["EXTERNAL_CASH_FLOW_LEDGER_NOT_VERIFIED", "FULL_NAV_AND_SETTLEMENT_NOT_VERIFIED"]
+        if previous is None:
+            blockers.append("NO_PRIOR_OBSERVATION")
+        elif calendar_gap != 1:
+            blockers.append("OBSERVATION_NOT_NEXT_CALENDAR_DAY")
+        if changed_symbols:
+            blockers.append("POSITION_QUANTITY_CHANGED_OR_MISSING")
+        observation_on_weekend = _day(snapshot["date"]).weekday() >= 5
+        if observation_on_weekend:
+            blockers.append("WEEKEND_OBSERVATION_NOT_MARKET_RETURN")
         series.append({
             "date": snapshot["date"], "captured_at": snapshot["captured_at"],
             "securities_value_krw": value,
+            "observation_on_weekend": observation_on_weekend,
+            "exchange_session_calendar_verified": False,
             "reported_cash_krw": snapshot["reported_cash_krw"],
             "broker_reported_total_assets_krw": snapshot["reported_total_assets_krw"],
             "previous_observation_date": previous["date"] if previous else None,
@@ -204,6 +237,24 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
                 if previous and previous["securities_value_krw"] > 0 else None,
             "same_position_quantities": same_quantities,
             "top_position_value_changes": contributions,
+            "top_unchanged_quantity_contributors": stable_contributions[:5],
+            "unchanged_quantity_attributed_change_krw": (
+                sum(x["valuation_change_krw"] for x in stable_contributions)
+                if previous else None
+            ),
+            "quantity_changed_or_added_or_removed_symbols": changed_symbols,
+            "reported_cash_change_krw": (
+                snapshot["reported_cash_krw"] - previous["reported_cash_krw"]
+                if previous else None
+            ),
+            "broker_reported_total_assets_change_krw": (
+                snapshot["reported_total_assets_krw"] - previous["reported_total_assets_krw"]
+                if previous else None
+            ),
+            "reported_totals_internal_arithmetic_matches": True,
+            "actual_investment_profit_krw": None,
+            "actual_investment_return_pct": None,
+            "return_blockers": blockers,
             "full_nav_verified": False,
         })
         previous = snapshot

@@ -74,6 +74,20 @@ ISA 전용 메타데이터(납입한도, ISA 만기, 계좌유형)의 존재 여
 
 계좌 소유자가 ISA 계좌임을 확인했을 때만 로컬 `.env`에 `KIS_ISA_USER_CONFIRMED=true`를 설정합니다. 서버 응답에는 `account_type_source=user_confirmed`로 표시하며 API 자체의 ISA 인증을 주장하지 않습니다. `kis_portfolio_export`는 종목별 원화 평가액과 브로커 원화 예수금을 별도 필드로 제공합니다. 예수금은 주문가능금액으로 확정하지 않으며 총자산에 중복 합산하지 않습니다.
 
+## 일별 평가액 기여 분석 — 수익률과 구분
+
+`kis_portfolio_history(month="YYYY-MM")`는 기존 비공개 기록을 재사용하여 아래 항목을 표시합니다.
+
+- `securities_valuation_change_krw`: 종목 평가액 변화
+- `reported_cash_change_krw`: 증권사 표시 예수금 변화 (외부 입출금이라고 단정 금지)
+- `broker_reported_total_assets_change_krw`: 증권사 보고 총평가액 변화
+- `unchanged_quantity_attributed_change_krw`: 수량이 같던 보유종목의 평가액 변화. 일부 종목만 수량이 바뀌어도 다른 안정 수량 종목의 변화를 별도로 표시
+- `quantity_changed_or_added_or_removed_symbols`: 매수/매도/기타 수량변경 가능성으로 가격 변화 분리 보류
+- `observation_on_weekend`, `exchange_session_calendar_verified=false`: 휴장·거래시간 시차 표시
+- `actual_investment_profit_krw=null`, `actual_investment_return_pct=null`: 순자산 회계정의, 정산, 원금 외부 이동과 전체 거래원장 미확인 상태에서는 실제 계좌 투자손익·수익률이라고 주장하지 않음
+
+KIS 총자산과 증권·예수금의 산술 합계가 맞는지 저장된 파일을 다시 검증하지만, **산술 일치는 투자수익률 검증을 의미하지 않습니다**. KIS 첫 스냅샷이 없는 날의 과거 데이터를 오늘 시세로 소급 작성하지 않습니다.
+
 ## 나무증권 통합 종목조회 (2026-11)
 
 \`kis_compare_namuh_snapshot\`는 나무증권 플러그인의 `portfolio_overview` 응답 JSON을 **호출자가 제공하면**, 한국투자증권 ISA를 새로 조회하고 종목별 보유수량·평가액을 합산합니다. 동일 종목도 거래소/국가가 다르면 다른 종목으로 유지합니다. 나무증권 자료는 KIS 서버가 원본을 인증하지 않으므로 `nh_input_provenance=caller_supplied_not_authenticated`로 표시됩니다. `portfolio_net_asset_audit`의 결과가 검증되지 않은 경우 입력 `namuh_audit_status=UNRECONCILED_ACCOUNTING`으로 전달할 수 있습니다.
