@@ -200,18 +200,21 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
         ) if previous else []
         contributions = stable_contributions[:5] if same_quantities else []
         securities_sum = sum(p["market_value_krw"] for p in snapshot["positions"])
-        balance_consistent = securities_sum == value and (
+        # A discrepancy between displayed cash, securities and reported total can result
+        # from settlement timing. Preserve it as unverified broker evidence;
+        # only a securities/position mismatch invalidates the snapshot history.
+        if securities_sum != value or (previous and
+            sum(p["market_value_krw"] for p in previous["positions"]) != previous["securities_value_krw"]):
+            raise ValueError("Stored securities position total does not reconcile")
+        current_arithmetic_matches = (
             snapshot["reported_cash_krw"] + value == snapshot["reported_total_assets_krw"]
             and snapshot.get("reported_total_matches_cash_plus_securities") is True
         )
-        previous_consistent = previous is None or (
-            sum(p["market_value_krw"] for p in previous["positions"]) == previous["securities_value_krw"]
-            and previous["reported_cash_krw"] + previous["securities_value_krw"]
+        previous_arithmetic_matches = previous is None or (
+            previous["reported_cash_krw"] + previous["securities_value_krw"]
             == previous["reported_total_assets_krw"]
             and previous.get("reported_total_matches_cash_plus_securities") is True
         )
-        if not balance_consistent or not previous_consistent:
-            raise ValueError("Stored account valuation totals do not reconcile")
         calendar_gap = (_day(snapshot["date"]) - _day(previous["date"])).days if previous else None
         blockers = ["EXTERNAL_CASH_FLOW_LEDGER_NOT_VERIFIED", "FULL_NAV_AND_SETTLEMENT_NOT_VERIFIED"]
         if previous is None:
@@ -220,6 +223,8 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
             blockers.append("OBSERVATION_NOT_NEXT_CALENDAR_DAY")
         if changed_symbols:
             blockers.append("POSITION_QUANTITY_CHANGED_OR_MISSING")
+        if not current_arithmetic_matches or not previous_arithmetic_matches:
+            blockers.append("BROKER_TOTAL_ARITHMETIC_UNVERIFIED_SETTLEMENT_PENDING")
         observation_on_weekend = _day(snapshot["date"]).weekday() >= 5
         if observation_on_weekend:
             blockers.append("WEEKEND_OBSERVATION_NOT_MARKET_RETURN")
@@ -251,7 +256,10 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
                 snapshot["reported_total_assets_krw"] - previous["reported_total_assets_krw"]
                 if previous else None
             ),
-            "reported_totals_internal_arithmetic_matches": True,
+            "reported_totals_internal_arithmetic_matches": current_arithmetic_matches,
+            "reported_total_minus_cash_and_securities_krw": (
+                snapshot["reported_total_assets_krw"] - snapshot["reported_cash_krw"] - value
+            ),
             "actual_investment_profit_krw": None,
             "actual_investment_return_pct": None,
             "return_blockers": blockers,

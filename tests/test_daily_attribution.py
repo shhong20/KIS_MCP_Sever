@@ -76,14 +76,33 @@ class DailyAttributionTests(unittest.TestCase):
         self.assertIn("WEEKEND_OBSERVATION_NOT_MARKET_RETURN",x["return_blockers"])
         self.assertIsNone(x["actual_investment_return_pct"])
 
+    def test_settlement_difference_is_preserved_not_misdiagnosed_as_return(self):
+        self.put("2026-11-12")
+        def unsettled(d):
+            d["broker_reported_total_assets_krw"] = 160000
+        self.put("2026-11-13", unsettled)
+        r = snapshot_history(self.settings, root=self.root)
+        day = r["series"][1]
+        self.assertEqual(day["reported_total_minus_cash_and_securities_krw"], 10000)
+        self.assertFalse(day["reported_totals_internal_arithmetic_matches"])
+        self.assertIn("BROKER_TOTAL_ARITHMETIC_UNVERIFIED_SETTLEMENT_PENDING", day["return_blockers"])
+        self.assertIsNone(day["actual_investment_return_pct"])
+
+    def test_previous_settlement_difference_is_retained_for_next_day(self):
+        def unsettled(d):
+            d["broker_reported_total_assets_krw"] = 160000
+        self.put("2026-11-12", unsettled)
+        self.put("2026-11-13")
+        r = snapshot_history(self.settings, root=self.root)
+        self.assertIn("BROKER_TOTAL_ARITHMETIC_UNVERIFIED_SETTLEMENT_PENDING", r["series"][1]["return_blockers"])
     def test_corrupt_stored_arithmetic_is_not_accepted(self):
         self.put("2026-11-12")
         p=next(self.root.glob("*/*.json"))
         import json
         obj=json.loads(p.read_text())
-        obj["reported_total_assets_krw"]=999999
+        obj["securities_value_krw"]=999999
         p.write_text(json.dumps(obj))
-        with self.assertRaisesRegex(ValueError,"do not reconcile"):
+        with self.assertRaisesRegex(ValueError,"does not reconcile"):
             snapshot_history(self.settings,root=self.root)
 
 if __name__=="__main__":
