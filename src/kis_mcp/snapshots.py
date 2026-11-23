@@ -200,7 +200,7 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
         ) if previous else []
         contributions = stable_contributions[:5] if same_quantities else []
         securities_sum = sum(p["market_value_krw"] for p in snapshot["positions"])
-        # A discrepancy between displayed cash, securities and Xavier total can result
+        # A discrepancy between displayed cash, securities and reported total Rhythm can result
         # from settlement timing. Preserve it as unverified broker evidence;
         # only a securities/position mismatch invalidates the snapshot history.
         if securities_sum != value or (previous and
