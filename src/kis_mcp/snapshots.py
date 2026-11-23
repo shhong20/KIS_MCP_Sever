@@ -66,6 +66,13 @@ def _read(path: Path) -> dict:
             or row["securities_value_krw"] < 0
             or not isinstance(row.get("positions"), list)):
         raise ValueError("Snapshot content invalid")
+    settlement = row.get("reported_settlement_fields_krw")
+    if settlement is not None:
+        if not isinstance(settlement, dict) or set(settlement) != {"nxdy_excc_amt", "prvs_rcdl_excc_amt"}:
+            raise ValueError("Snapshot settlement evidence malformed")
+        if any(value is not None and (type(value) is not int or abs(value) > 10**15)
+               for value in settlement.values()):
+            raise ValueError("Snapshot settlement evidence invalid")
     return row
 
 
@@ -104,12 +111,24 @@ def _make_snapshot(data: dict, day: str, captured_at: str) -> dict:
         raise ValueError("KIS securities totals mismatch")
     cash = _nonnegative_int(data.get("broker_reported_cash_krw"))
     broker_total = _nonnegative_int(data.get("broker_reported_total_assets_krw"))
+    source_settlement = data.get("broker_reported_settlement_fields_krw")
+    if source_settlement is not None and not isinstance(source_settlement, dict):
+        raise ValueError("KIS settlement evidence must be an object")
+    settlement = None
+    if source_settlement is not None:
+        settlement = {}
+        for field in ("nxdy_excc_amt", "prvs_rcdl_excc_amt"):
+            value = source_settlement.get(field)
+            if value is not None and (type(value) is not int or abs(value) > 10**15):
+                raise ValueError("Invalid KIS settlement amount")
+            settlement[field] = value
     return {
         "schema_version": 1, "broker": "KIS", "date": day,
         "captured_at": captured_at, "timezone": "Asia/Seoul",
         "scope": "KR_securities_and_reported_cash_not_verified_full_NAV",
         "securities_value_krw": securities,
         "reported_cash_krw": cash, "reported_total_assets_krw": broker_total,
+        "reported_settlement_fields_krw": settlement,
         "reported_total_matches_cash_plus_securities": securities + cash == broker_total,
         "cash_order_buyable_verified": False, "full_nav_verified": False,
         "positions": sorted(positions, key=lambda p: p["symbol"]),
@@ -234,6 +253,13 @@ def snapshot_history(settings: Settings, month: str = "", *, root: Path | None =
             "observation_on_weekend": observation_on_weekend,
             "exchange_session_calendar_verified": False,
             "reported_cash_krw": snapshot["reported_cash_krw"],
+            "reported_settlement_fields_krw": snapshot.get("reported_settlement_fields_krw"),
+            "previous_reported_settlement_fields_krw": (
+                previous.get("reported_settlement_fields_krw") if previous else None
+            ),
+            "settlement_evidence_captured": isinstance(snapshot.get("reported_settlement_fields_krw"), dict)
+                and any(v is not None for v in snapshot["reported_settlement_fields_krw"].values()),
+            "settlement_accounting_mapping_verified": False,
             "broker_reported_total_assets_krw": snapshot["reported_total_assets_krw"],
             "previous_observation_date": previous["date"] if previous else None,
             "calendar_gap_days": (_day(snapshot["date"]) - _day(previous["date"])).days if previous else None,
