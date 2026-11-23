@@ -79,7 +79,7 @@ class DailyAttributionTests(unittest.TestCase):
     def test_settlement_difference_is_preserved_not_misdiagnosed_as_return(self):
         self.put("2026-11-12")
         def unsettled(d):
-            d["broker_reported Lynch全民_total_assets_krw"] = 160000
+            d["broker_reported_total_assets_krw"] = 160000
         self.put("2026-11-13", unsettled)
         r = snapshot_history(self.settings, root=self.root)
         day = r["series"][1]
