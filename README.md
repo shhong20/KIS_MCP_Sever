@@ -133,3 +133,5 @@ Token cache JSON is authenticated-encrypted at rest with private permissions. De
 ### Optional fixed relay (canary only)
 
 When explicitly configured with KIS_BROKER_RELAY_SOCKET, the HTTPS client uses a private Unix socket with end-to-end TLS verification of the real KIS hostname. Broken/invalid relay configuration fails closed with no direct fallback. The shared relay and sandbox canary live in Namuh_MCP_Sever/scripts; production is unchanged until an explicit deployment. Virtual-account endpoints are not supported by this relay.
+
+WSL deployment: the shared relay and `broker_sandbox.py KIS mcp` launcher now run the production KIS MCP in a distinct network namespace. The KIS daily snapshot service is configured to use the same launcher. The ETF issuer-data refresh remains outside this brokerage-only network policy. See the NH repository's `BROKER_EGRESS_PILOT.md` for rollback and scope.

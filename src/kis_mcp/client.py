@@ -242,6 +242,8 @@ class KISClient:
             return self._issue_token()
 
     def _issue_token(self) -> str:
+        if os.environ.get("BROKER_CACHE_ONLY")=="1":
+            raise KISError("KIS canary issuance forbidden")
         _audit("issue_attempt")
         obj, _ = self._request(
             TOKEN_PATH,
