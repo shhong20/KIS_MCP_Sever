@@ -129,3 +129,7 @@ KIS 국내잔고 `output2`가 제공하는 `nxdy_excc_amt`와 `prvs_rcdl_excc_am
 ### Token cache protection
 
 Token cache JSON is authenticated-encrypted at rest with private permissions. Default: AES-256-GCM using a per-scope HKDF-SHA256 key derived from the configured broker secret. For WSL production, `~/.local/state/kis-mcp/host-protection` (mode `0600`, contents `systemd-host-v1`) selects user-scoped host encryption using `systemd-creds --user --with-key=host`. A valid legacy cache migrates under the token lock without changing expiry or issuing a new token. Existing host-encrypted data fails closed if the marker is absent or decryption fails. No plaintext fallback. Host key loss requires reauthentication. This does not defend against arbitrary code running as the same OS user.
+
+### Optional fixed relay (canary only)
+
+When explicitly configured with KIS_BROKER_RELAY_SOCKET, the HTTPS client uses a private Unix socket with end-to-end TLS verification of the real KIS hostname. Broken/invalid relay configuration fails closed with no direct fallback. The shared relay and sandbox canary live in Namuh_MCP_Sever/scripts; production is unchanged until an explicit deployment. Virtual-account endpoints are not supported by this relay.

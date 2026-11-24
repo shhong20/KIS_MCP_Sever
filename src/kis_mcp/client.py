@@ -14,6 +14,7 @@ import sys
 import stat
 from .config import Settings
 from .cache_crypto import seal, unseal
+from .relay_transport import relay_request
 
 TOKEN_PATH = "/oauth2/tokenP"
 DOMESTIC_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance"
@@ -45,6 +46,12 @@ class KISClient:
         if (origin.scheme, origin.netloc) not in {("https","openapi.koreainvestment.com:9443"),("https","openapivts.koreainvestment.com:29443")}:
             raise KISError("KIS endpoint not allowed")
         print(json.dumps({"broker":"KIS","event":"outbound","origin":origin.scheme+"://"+origin.netloc,"kind":"auth" if origin.path==TOKEN_PATH else "data"}),file=sys.stderr)
+        relay = os.environ.get("KIS_BROKER_RELAY_SOCKET")
+        if relay is not None:
+            try:
+                return relay_request(url,method,headers,payload,relay)
+            except (OSError,ValueError) as exc:
+                raise KISError("KIS relay unavailable or refused") from None
         opener = request.build_opener(request.ProxyHandler({}), _NoRedirect())
         with opener.open(req, timeout=12) as res:
             return res.status, dict(res.headers.items()), res.read()
