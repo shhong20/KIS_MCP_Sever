@@ -11,8 +11,8 @@ from .etf_official import read_fresh_official_cache
 from .snapshots import capture_snapshot, snapshot_history
 import json
 
-def make_service(settings: Settings):
-    client = KISClient(settings)
+def make_service(settings: Settings, client: KISClient | None = None):
+    client = client or KISClient(settings)
     def status() -> dict:
         return settings.public_status()
     def balance() -> dict:
@@ -36,9 +36,15 @@ def main() -> None:
 
     settings = Settings.from_env()
     client = KISClient(settings)
-    status, balance, export = make_service(settings)
+    status, balance, export = make_service(settings, client)
     app = FastMCP("kis-readonly")
     app.tool(name="kis_connection_status", description="KIS API configuration status, no secrets")(status)
+    def auth_security_status() -> dict:
+        try:
+            return client.auth_security_status()
+        except (KISError,OSError,ValueError,TypeError,AttributeError):
+            return {"ok":False,"reason":"KIS auth status unavailable"}
+    app.tool(name="kis_auth_security_status",description="Read-only cache and official endpoint status; never issues tokens or exposes secrets")(auth_security_status)
     app.tool(name="kis_domestic_balance", description="Read-only domestic holdings and cash summary; ISA eligibility not guaranteed")(balance)
     app.tool(name="kis_portfolio_export", description="Normalized redacted holdings for cross-broker analysis")(export)
     def compare_namuh_snapshot(namuh_overview_json: str, namuh_audit_status: str = "UNVERIFIED") -> dict:

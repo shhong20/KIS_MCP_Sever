@@ -8,6 +8,10 @@ from pathlib import Path
 from uuid import uuid4
 from urllib import parse, request, error
 from typing import Callable
+from contextlib import contextmanager
+import fcntl
+import sys
+import stat
 from .config import Settings
 
 TOKEN_PATH = "/oauth2/tokenP"
@@ -17,6 +21,13 @@ ALLOWED_DATA_PATHS = frozenset({DOMESTIC_BALANCE_PATH, BUYABLE_PATH})
 
 class KISError(RuntimeError):
     """Errors must not echo API credentials, account numbers or response bodies."""
+
+class _NoRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise KISError("KIS redirect blocked")
+
+def _audit(event: str) -> None:
+    print(json.dumps({"broker":"KIS","event":event,"time":int(time.time())}), file=sys.stderr)
 
 class KISClient:
     def __init__(self, config: Settings, *, transport: Callable | None = None):
@@ -29,7 +40,12 @@ class KISClient:
     @staticmethod
     def _urlopen_transport(url: str, method: str, headers: dict, payload: bytes | None):
         req = request.Request(url, data=payload, headers=headers, method=method)
-        with request.urlopen(req, timeout=12) as res:
+        origin = parse.urlsplit(url)
+        if (origin.scheme, origin.netloc) not in {("https","openapi.koreainvestment.com:9443"),("https","openapivts.koreainvestment.com:29443")}:
+            raise KISError("KIS endpoint not allowed")
+        print(json.dumps({"broker":"KIS","event":"outbound","origin":origin.scheme+"://"+origin.netloc,"kind":"auth" if origin.path==TOKEN_PATH else "data"}),file=sys.stderr)
+        opener = request.build_opener(request.ProxyHandler({}), _NoRedirect())
+        with opener.open(req, timeout=12) as res:
             return res.status, dict(res.headers.items()), res.read()
 
     def _request(self, path: str, *, method: str, headers: dict, body: dict | None = None, params: dict | None = None):
@@ -54,8 +70,8 @@ class KISClient:
                 status, response_headers, raw = 401, {}, b""
             if status == 401 and path != TOKEN_PATH:
                 # One bounded retry. Do not repeat other errors or rotate on 429.
-                self._invalidate_token()
-                headers = {**headers, "authorization": "Bearer " + self._token()}
+                failed = headers.get("authorization", "").removeprefix("Bearer ")
+                headers = {**headers, "authorization": "Bearer " + self._token(failed=failed)}
                 try:
                     status, response_headers, raw = self.transport(url, method, headers, data)
                 except error.HTTPError as exc:
@@ -74,6 +90,21 @@ class KISClient:
             raise KISError(f"KIS HTTP {exc.code} (response content withheld)") from None
         except (error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
             raise KISError("KIS transport or response error") from None
+
+    def auth_security_status(self) -> dict:
+        path = self._cache_file()
+        until = 0.0
+        if path.exists():
+            if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o077:
+                raise KISError("Token cache permissions invalid")
+            obj = json.loads(path.read_text())
+            if isinstance(obj.get("token"), str) and obj["token"]:
+                until = float(obj.get("expires_at", 0))
+        return {"read_only":True,"api_origin":self.config.base_url,
+                "disk_valid":until>time.time()+60,
+                "expires_at_unix":int(until) if until>0 else None,
+                "memory_valid":bool(self._access_token and time.monotonic()<self._token_until),
+                "redirects_allowed":False,"proxy_enabled":False}
 
     def _cache_file(self) -> Path:
         identity = sha256((self.config.environment + ":" + self.config.app_key
@@ -136,13 +167,45 @@ class KISClient:
         except OSError:
             raise KISError("Token cache invalidation failed") from None
 
-    def _token(self) -> str:
-        if self._access_token and time.monotonic() < self._token_until:
+    @contextmanager
+    def _token_lock(self):
+        path = self._cache_file().with_suffix(".lock")
+        fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o077 or st.st_uid != os.getuid():
+                raise KISError("KIS token lock permissions invalid")
+            deadline = time.monotonic() + 30
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise KISError("KIS token lock timeout")
+                    time.sleep(.1)
+            yield
+        finally:
+            os.close(fd)
+
+    def _token(self, failed: str | None = None) -> str:
+        if self._access_token and self._access_token != failed and time.monotonic() < self._token_until:
+            _audit("memory_reuse")
             return self._access_token
-        if self._allow_disk_cache:
+        if not self._allow_disk_cache:
+            return self._issue_token()
+        with self._token_lock():
             cached = self._load_cached_token()
-            if cached:
+            if cached and cached != failed:
+                _audit("disk_reuse")
                 return cached
+            if failed:
+                self._invalidate_token()
+                _audit("revoked")
+            return self._issue_token()
+
+    def _issue_token(self) -> str:
+        _audit("issue_attempt")
         obj, _ = self._request(
             TOKEN_PATH,
             method="POST",
@@ -163,6 +226,7 @@ class KISClient:
         self._token_until = time.monotonic() + ttl
         if self._allow_disk_cache and ttl > 0:
             self._save_cached_token(token, time.time() + ttl)
+        _audit("issued")
         return token
 
     def domestic_balance(self) -> dict:
