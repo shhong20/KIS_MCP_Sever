@@ -13,6 +13,7 @@ import fcntl
 import sys
 import stat
 from .config import Settings
+from .cache_crypto import seal, unseal
 
 TOKEN_PATH = "/oauth2/tokenP"
 DOMESTIC_BALANCE_PATH = "/uapi/domestic-stock/v1/trading/inquire-balance"
@@ -94,17 +95,19 @@ class KISClient:
     def auth_security_status(self) -> dict:
         path = self._cache_file()
         until = 0.0
-        if path.exists():
+        scheme = None
+        if path.exists() or path.is_symlink():
             if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o077:
                 raise KISError("Token cache permissions invalid")
-            obj = json.loads(path.read_text())
+            obj, scheme = self._read_cache(path)
             if isinstance(obj.get("token"), str) and obj["token"]:
                 until = float(obj.get("expires_at", 0))
         return {"read_only":True,"api_origin":self.config.base_url,
                 "disk_valid":until>time.time()+60,
                 "expires_at_unix":int(until) if until>0 else None,
                 "memory_valid":bool(self._access_token and time.monotonic()<self._token_until),
-                "redirects_allowed":False,"proxy_enabled":False}
+                "redirects_allowed":False,"proxy_enabled":False,
+                "cache_protection":self._protection(path),"cache_format":scheme}
 
     def _cache_file(self) -> Path:
         identity = sha256((self.config.environment + ":" + self.config.app_key
@@ -115,17 +118,40 @@ class KISClient:
             raise KISError("Token cache directory permissions invalid")
         return directory / ("token-" + identity + ".json")
 
+    def _protection(self,path):
+        marker=path.parent/"host-protection"
+        if not marker.exists() and not marker.is_symlink():
+            return "aes-gcm-v1"
+        st=marker.lstat()
+        if not stat.S_ISREG(st.st_mode) or st.st_mode&0o077 or st.st_uid!=os.getuid():
+            raise KISError("KIS cache protection permissions invalid")
+        if marker.read_text().strip()!="systemd-host-v1":
+            raise KISError("KIS cache protection invalid")
+        return "systemd-host-v1"
+
+    def _read_cache(self,path):
+        try:
+            st=path.lstat()
+            if not stat.S_ISREG(st.st_mode) or st.st_mode&0o077 or st.st_uid!=os.getuid():
+                raise ValueError()
+            return unseal(json.loads(path.read_text()),self.config.app_secret,path.stem,self._protection(path))
+        except (OSError,ValueError,TypeError,AttributeError):
+            raise KISError("KIS cache decrypt failed") from None
+
     def _load_cached_token(self) -> str | None:
         path = self._cache_file()
-        if not path.exists():
+        if not path.exists() and not path.is_symlink():
             return None
         if path.is_symlink() or (path.stat().st_mode & 0o077):
             raise KISError("Token cache permissions invalid")
         try:
-            obj = json.loads(path.read_text())
+            obj, scheme = self._read_cache(path)
             token = obj.get("token")
             until = float(obj.get("expires_at", 0))
             if isinstance(token, str) and token and until > time.time() + 60:
+                if scheme!=self._protection(path):
+                    self._save_cached_token(token,until)
+                    _audit("cache_encrypted")
                 self._access_token = token
                 self._token_until = time.monotonic() + (until - time.time())
                 return token
@@ -135,12 +161,16 @@ class KISClient:
 
     def _save_cached_token(self, token: str, expires_at: float) -> None:
         path = self._cache_file()
+        try:
+            envelope=seal({"token":token,"expires_at":expires_at},self.config.app_secret,path.stem,self._protection(path))
+        except (OSError,ValueError,TypeError):
+            raise KISError("KIS cache encryption failed") from None
         tmp = path.with_name("." + path.name + "." + uuid4().hex)
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         fd = os.open(tmp, flags, 0o600)
         try:
             with os.fdopen(fd, "w") as stream:
-                json.dump({"token": token, "expires_at": expires_at}, stream)
+                json.dump(envelope, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(tmp, path)

@@ -125,3 +125,7 @@ KIS 국내잔고 `output2`가 제공하는 `nxdy_excc_amt`와 `prvs_rcdl_excc_am
 - 계좌번호·토큰·키·전체 API 응답은 기록하지 않습니다. 신규 필드는 원화 정산 관련 **두 숫자**만 보존합니다.
 
 이 기능은 코드 병합 후 개인 WSL의 KIS MCP 서비스에 새 코드를 배포해야 실제로 기록됩니다.
+
+### Token cache protection
+
+Token cache JSON is authenticated-encrypted at rest with private permissions. Default: AES-256-GCM using a per-scope HKDF-SHA256 key derived from the configured broker secret. For WSL production, `~/.local/state/kis-mcp/host-protection` (mode `0600`, contents `systemd-host-v1`) selects user-scoped host encryption using `systemd-creds --user --with-key=host`. A valid legacy cache migrates under the token lock without changing expiry or issuing a new token. Existing host-encrypted data fails closed if the marker is absent or decryption fails. No plaintext fallback. Host key loss requires reauthentication. This does not defend against arbitrary code running as the same OS user.

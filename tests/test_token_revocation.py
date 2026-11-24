@@ -60,5 +60,7 @@ class KISStaleTokenTest(unittest.TestCase):
                 self.assertEqual(len(cache),1)
                 self.assertEqual(cache[0].stat().st_mode&0o777,0o600)
                 obj=json.loads(cache[0].read_text())
-                self.assertEqual(obj["token"],"new-token-2")
+                self.assertEqual(obj["scheme"],"aes-gcm-v1")
+                self.assertNotIn("new-token-2",cache[0].read_text())
+                self.assertEqual(c._read_cache(cache[0])[0]["token"],"new-token-2")
 if __name__=="__main__":unittest.main()
